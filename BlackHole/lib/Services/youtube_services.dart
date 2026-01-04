@@ -162,6 +162,33 @@ class YouTubeServices {
   }
 
   Future<List> getSearchSuggestions({required String query}) async {
+    // Try RapidAPI first
+    try {
+      final Uri rapidApiLink = Uri.parse(
+        '${RapidApiConfig.youtubeBaseUrl}/auto-complete/?q=${Uri.encodeComponent(query)}&hl=en&gl=US',
+      );
+      final Response rapidResponse = await get(rapidApiLink, headers: RapidApiConfig.getYoutubeHeaders());
+      if (rapidResponse.statusCode == 200) {
+        final Map res = jsonDecode(rapidResponse.body) as Map;
+        if (res['results'] != null) {
+          final List<String> suggestions = [];
+          for (final suggestion in res['results']) {
+            if (suggestion is String) {
+              suggestions.add(suggestion);
+            } else if (suggestion is Map && suggestion['query'] != null) {
+              suggestions.add(suggestion['query'].toString());
+            }
+          }
+          if (suggestions.isNotEmpty) {
+            return suggestions;
+          }
+        }
+      }
+    } catch (e) {
+      Logger.root.info('RapidAPI suggestions failed, trying fallback: $e');
+    }
+    
+    // Fallback to invidious
     const baseUrl =
         // 'https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q=';
         'https://invidious.snopyta.org/api/v1/search/suggestions?q=';
