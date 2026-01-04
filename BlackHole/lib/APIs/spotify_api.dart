@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:blackhole/APIs/rapidapi_config.dart';
 import 'package:http/http.dart';
 import 'package:logging/logging.dart';
 
@@ -27,22 +28,6 @@ class SpotifyApi {
 
   String requestAuthorization() =>
       'https://accounts.spotify.com/authorize?client_id=$clientID&response_type=code&redirect_uri=$redirectUrl&scope=${_scopes.join('%20')}';
-
-  // Future<String> authenticate() async {
-  //   final url = SpotifyApi().requestAuthorization();
-  //   final callbackUrlScheme = 'accounts.spotify.com';
-
-  //   try {
-  //     final result = await FlutterWebAuth.authenticate(
-  //         url: url, callbackUrlScheme: callbackUrlScheme);
-  // print('got result....');
-  // print(result);
-  //     return result;
-  //   } catch (e) {
-  // print('Got error: $e');
-  //     return 'ERROR';
-  //   }
-  // }
 
   Future<List<String>> getAccessToken({
     String? code,
@@ -222,5 +207,154 @@ class SpotifyApi {
       Logger.root.severe('Error in getting spotify featured playlists: $e');
       return List.empty();
     }
+  }
+
+  // RapidAPI-based methods for searching (no OAuth required)
+  Future<List<Map>> searchTracks(String query, {int limit = 20}) async {
+    try {
+      final Uri path = Uri.parse(
+        '${RapidApiConfig.spotifyBaseUrl}/search?q=${Uri.encodeComponent(query)}&type=track&limit=$limit',
+      );
+      final response = await get(
+        path,
+        headers: RapidApiConfig.getSpotifyHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        final List<Map> tracks = [];
+        if (result['tracks'] != null && result['tracks']['items'] != null) {
+          for (final track in result['tracks']['items']) {
+            tracks.add({
+              'name': track['name'],
+              'id': track['id'],
+              'artist': (track['artists'] as List).isNotEmpty
+                  ? track['artists'][0]['name']
+                  : 'Unknown',
+              'album': track['album']?['name'] ?? '',
+              'image': track['album']?['images']?.isNotEmpty == true
+                  ? track['album']['images'][0]['url']
+                  : '',
+              'duration': track['duration_ms'],
+              'preview_url': track['preview_url'],
+              'external_url': track['external_urls']?['spotify'] ?? '',
+            });
+          }
+        }
+        return tracks;
+      }
+    } catch (e) {
+      Logger.root.severe('Error in RapidAPI spotify search: $e');
+    }
+    return [];
+  }
+
+  Future<List<Map>> searchArtists(String query, {int limit = 20}) async {
+    try {
+      final Uri path = Uri.parse(
+        '${RapidApiConfig.spotifyBaseUrl}/search?q=${Uri.encodeComponent(query)}&type=artist&limit=$limit',
+      );
+      final response = await get(
+        path,
+        headers: RapidApiConfig.getSpotifyHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        final List<Map> artists = [];
+        if (result['artists'] != null && result['artists']['items'] != null) {
+          for (final artist in result['artists']['items']) {
+            artists.add({
+              'name': artist['name'],
+              'id': artist['id'],
+              'image': artist['images']?.isNotEmpty == true
+                  ? artist['images'][0]['url']
+                  : '',
+              'followers': artist['followers']?['total'] ?? 0,
+              'genres': artist['genres'] ?? [],
+              'external_url': artist['external_urls']?['spotify'] ?? '',
+            });
+          }
+        }
+        return artists;
+      }
+    } catch (e) {
+      Logger.root.severe('Error in RapidAPI spotify artist search: $e');
+    }
+    return [];
+  }
+
+  Future<List<Map>> searchAlbums(String query, {int limit = 20}) async {
+    try {
+      final Uri path = Uri.parse(
+        '${RapidApiConfig.spotifyBaseUrl}/search?q=${Uri.encodeComponent(query)}&type=album&limit=$limit',
+      );
+      final response = await get(
+        path,
+        headers: RapidApiConfig.getSpotifyHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        final List<Map> albums = [];
+        if (result['albums'] != null && result['albums']['items'] != null) {
+          for (final album in result['albums']['items']) {
+            albums.add({
+              'name': album['name'],
+              'id': album['id'],
+              'artist': (album['artists'] as List).isNotEmpty
+                  ? album['artists'][0]['name']
+                  : 'Unknown',
+              'image': album['images']?.isNotEmpty == true
+                  ? album['images'][0]['url']
+                  : '',
+              'release_date': album['release_date'] ?? '',
+              'total_tracks': album['total_tracks'] ?? 0,
+              'external_url': album['external_urls']?['spotify'] ?? '',
+            });
+          }
+        }
+        return albums;
+      }
+    } catch (e) {
+      Logger.root.severe('Error in RapidAPI spotify album search: $e');
+    }
+    return [];
+  }
+
+  Future<Map?> getTrackDetailsRapidApi(String trackId) async {
+    try {
+      final Uri path = Uri.parse(
+        '${RapidApiConfig.spotifyBaseUrl}/tracks?ids=$trackId',
+      );
+      final response = await get(
+        path,
+        headers: RapidApiConfig.getSpotifyHeaders(),
+      );
+
+      if (response.statusCode == 200) {
+        final result = jsonDecode(response.body);
+        if (result['tracks'] != null && (result['tracks'] as List).isNotEmpty) {
+          final track = result['tracks'][0];
+          return {
+            'name': track['name'],
+            'id': track['id'],
+            'artist': (track['artists'] as List).isNotEmpty
+                ? track['artists'][0]['name']
+                : 'Unknown',
+            'album': track['album']?['name'] ?? '',
+            'image': track['album']?['images']?.isNotEmpty == true
+                ? track['album']['images'][0]['url']
+                : '',
+            'duration': track['duration_ms'],
+            'preview_url': track['preview_url'],
+            'external_url': track['external_urls']?['spotify'] ?? '',
+          };
+        }
+      }
+    } catch (e) {
+      Logger.root.severe('Error in RapidAPI spotify track details: $e');
+    }
+    return null;
   }
 }
